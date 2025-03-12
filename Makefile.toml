@@ -1,0 +1,6 @@
+[tasks.build-all]
+description = "Builds for both Linux and Windows 32-bit targets."
+script = [
+  "cargo build --release --target i686-unknown-linux-gnu",
+  "cargo build --release --target i686-pc-windows-gnu",
+]
