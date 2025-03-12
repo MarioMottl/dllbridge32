@@ -30,7 +30,8 @@ Build the Windows 32-bit version:
 
 ```bash
 cargo build --release --target i686-pc-windows-gnu
-Alternatively, you can use a task runner (like cargo-make) with a Makefile.toml to build both targets with a single command:
+Alternatively, you can use a task runner (like cargo-make)
+    with a Makefile.toml to build both targets with a single command:
 ```
 
 ```bash
