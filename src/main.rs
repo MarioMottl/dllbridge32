@@ -7,8 +7,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::thread;
 
-// --- Types and Signature Parsing ---
-
 #[derive(Debug)]
 enum SupportedType {
     Int,
@@ -34,7 +32,6 @@ struct FunctionSignature {
     return_type: SupportedType,
 }
 
-/// Parse a signature string of the form "int,int(stdcall)->int"
 fn parse_signature(signature: &str) -> Result<FunctionSignature, String> {
     let parts: Vec<&str> = signature.split("->").collect();
     if parts.len() != 2 {
@@ -43,7 +40,6 @@ fn parse_signature(signature: &str) -> Result<FunctionSignature, String> {
     let params_with_conv = parts[0]; // e.g., "int,int(stdcall)"
     let ret_type_str = parts[1]; // e.g., "int"
 
-    // Determine calling convention if provided (e.g., int,int(stdcall))
     let mut calling_convention = "cdecl".to_string();
     let params_part = if let Some(start) = params_with_conv.find('(') {
         if let Some(end) = params_with_conv.find(')') {
@@ -71,12 +67,9 @@ fn parse_signature(signature: &str) -> Result<FunctionSignature, String> {
     })
 }
 
-// --- Dynamic Invocation with libffi ---
-
 fn dynamic_invoke(func_ptr: *const std::ffi::c_void, args: &[&str]) -> Result<String, String> {
     use libffi::middle::{Arg, Cif, CodePtr, Type};
 
-    // In this simplified example, we assume all parameters are ints and the return type is int.
     let arg_types = vec![Type::i32(); args.len()];
     let cif = Cif::new(arg_types, Type::i32());
 
@@ -90,9 +83,6 @@ fn dynamic_invoke(func_ptr: *const std::ffi::c_void, args: &[&str]) -> Result<St
     Ok(result.to_string())
 }
 
-/// The core function that performs the invocation.
-/// If metadata is provided, it will use it to build the call interface dynamically;
-/// otherwise, it falls back to default assumptions.
 fn invoke_function(
     lib: &Library,
     name: &str,
@@ -109,19 +99,15 @@ fn invoke_function(
         if let Some(sig_str) = metadata {
             let signature = parse_signature(sig_str)?;
             println!("Using metadata: {:?}", signature);
-            // In this example we only support int parameters/return types.
             dynamic_invoke(func_ptr, args)
         } else {
-            // No metadata provided. Use default assumptions.
             if args.is_empty() {
-                // Assume a no-arg function: extern "C" fn() -> i32
                 let func: libloading::Symbol<unsafe extern "C" fn() -> i32> = lib
                     .get(func_name.as_bytes_with_nul())
                     .map_err(|e| e.to_string())?;
                 let result = func();
                 Ok(result.to_string())
             } else if args.len() == 2 {
-                // Assume two int parameters with cdecl: extern "C" fn(i32, i32) -> i32
                 let a: i32 = args[0].parse().map_err(|_| "Invalid int")?;
                 let b: i32 = args[1].parse().map_err(|_| "Invalid int")?;
                 let func: libloading::Symbol<unsafe extern "C" fn(i32, i32) -> i32> = lib
@@ -136,10 +122,7 @@ fn invoke_function(
     }
 }
 
-// --- Client Command Handler ---
-
 fn handle_client_command(stream: &mut TcpStream, lib: &Library, line: &str) {
-    // Command format: call FunctionName [sig:<signature>] arg1 arg2 ...
     let tokens: Vec<&str> = line.trim().split_whitespace().collect();
     if tokens.len() < 2 {
         writeln!(stream, "ERR Invalid command").ok();
@@ -166,8 +149,6 @@ fn handle_client_command(stream: &mut TcpStream, lib: &Library, line: &str) {
     }
 }
 
-// --- Server Listener ---
-
 fn handle_client(mut stream: TcpStream, lib: Arc<Library>) {
     println!("Client connected: {}", stream.peer_addr().unwrap());
     let mut reader = BufReader::new(stream.try_clone().unwrap());
@@ -176,9 +157,7 @@ fn handle_client(mut stream: TcpStream, lib: Arc<Library>) {
         if bytes_read == 0 {
             break;
         }
-        // Each command should start with "call"
         if line.trim().starts_with("call") {
-            // Call your command handler here, for example:
             handle_client_command(&mut stream, &lib, &line);
         } else {
             writeln!(stream, "ERR Unknown command").ok();
@@ -207,10 +186,8 @@ fn main() {
     };
     println!("Loaded DLL: {}", dll_path);
 
-    // Wrap the library in an Arc for shared ownership.
     let lib = Arc::new(lib);
 
-    // Start a TCP listener on 127.0.0.1:port.
     let listener_addr = format!("127.0.0.1:{}", port);
     let listener = TcpListener::bind(&listener_addr).unwrap_or_else(|e| {
         eprintln!("Failed to bind to {}: {}", listener_addr, e);
@@ -218,7 +195,6 @@ fn main() {
     });
     println!("DLL server listening on {}", listener_addr);
 
-    // Accept clients in a loop. Each client will be handled in a separate thread.
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
