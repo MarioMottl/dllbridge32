@@ -11,6 +11,7 @@ use std::thread;
 enum SupportedType {
     Int,
     Float,
+    Char,
 }
 
 impl FromStr for SupportedType {
@@ -19,6 +20,7 @@ impl FromStr for SupportedType {
         match s.to_lowercase().as_str() {
             "int" => Ok(SupportedType::Int),
             "float" => Ok(SupportedType::Float),
+            "char" => Ok(SupportedType::Char),
             _ => Err(format!("Unsupported type: {}", s)),
         }
     }
@@ -96,28 +98,12 @@ fn invoke_function(
             .map_err(|e| e.to_string())?;
         let func_ptr = *symbol as *const std::ffi::c_void;
 
-        if let Some(sig_str) = metadata {
-            let signature = parse_signature(sig_str)?;
+        if let Some(return_str) = metadata {
+            let signature = parse_signature(return_str)?;
             println!("Using metadata: {:?}", signature);
             dynamic_invoke(func_ptr, args)
         } else {
-            if args.is_empty() {
-                let func: libloading::Symbol<unsafe extern "C" fn() -> i32> = lib
-                    .get(func_name.as_bytes_with_nul())
-                    .map_err(|e| e.to_string())?;
-                let result = func();
-                Ok(result.to_string())
-            } else if args.len() == 2 {
-                let a: i32 = args[0].parse().map_err(|_| "Invalid int")?;
-                let b: i32 = args[1].parse().map_err(|_| "Invalid int")?;
-                let func: libloading::Symbol<unsafe extern "C" fn(i32, i32) -> i32> = lib
-                    .get(func_name.as_bytes_with_nul())
-                    .map_err(|e| e.to_string())?;
-                let result = func(a, b);
-                Ok(result.to_string())
-            } else {
-                Err("Unsupported number of arguments for default mode".into())
-            }
+            Err("No signature string provided".into())
         }
     }
 }
@@ -177,7 +163,6 @@ fn main() {
     let dll_path = &args[1];
     let port = if args.len() >= 3 { &args[2] } else { "5000" };
 
-    // Load the DLL.
     let lib = unsafe {
         Library::new(dll_path).unwrap_or_else(|e| {
             eprintln!("Failed to load DLL {}: {}", dll_path, e);
