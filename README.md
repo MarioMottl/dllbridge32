@@ -59,21 +59,6 @@ telnet 127.0.0.1 5000
 ```
 
 Example Commands
-Call a no-parameter function:
-
-```bash
-call helloworld
-Expected response: 42
-```
-
-Call a function with two integers (default two-int signature):
-
-```bash
-call AddNumbers 5 7
-Expected response: 12
-```
-
-Call a function using metadata (specifying calling convention):
 
 ```bash
 call ComputeSumStdCall sig:int,int(stdcall)->int 8 9
