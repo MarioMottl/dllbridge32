@@ -12,6 +12,7 @@ enum SupportedType {
     Int,
     Float,
     Char,
+    Void,
 }
 
 impl FromStr for SupportedType {
@@ -21,6 +22,7 @@ impl FromStr for SupportedType {
             "int" => Ok(SupportedType::Int),
             "float" => Ok(SupportedType::Float),
             "char" => Ok(SupportedType::Char),
+            "void" => Ok(SupportedType::Void),
             _ => Err(format!("Unsupported type: {}", s)),
         }
     }
@@ -108,53 +110,82 @@ fn invoke_function(
     }
 }
 
-fn handle_client_command(stream: &mut TcpStream, lib: &Library, line: &str) {
+fn handle_client_command(stream: &mut TcpStream, lib: &Library, line: &str) -> () {
     let tokens: Vec<&str> = line.trim().split_whitespace().collect();
-    if tokens.len() < 2 {
-        writeln!(stream, "ERR Invalid command").ok();
+    if tokens.get(0) != Some(&"call") {
+        stream
+            .write_all(b"ERR Command must start with 'call'")
+            .expect("Could not write to stream");
+
         return;
     }
+    if tokens.len() < 2 {
+        stream
+            .write_all(b"ERR Missing function name")
+            .expect("Could not write to stream");
+        return;
+    }
+
     let function_name = tokens[1];
-    let mut metadata = None;
-    let mut args_start_index = 2;
 
-    if tokens.len() > 2 && tokens[2].starts_with("sig:") {
-        let sig = tokens[2].trim_start_matches("sig:");
-        metadata = Some(sig);
-        args_start_index = 3;
-    }
-    let args = &tokens[args_start_index..];
+    let mut metadata: Option<String> = None;
+    let mut args_start = 2;
 
-    match invoke_function(lib, function_name, metadata, args) {
-        Ok(result) => {
-            writeln!(stream, "{}", result).ok();
-        }
-        Err(err_msg) => {
-            writeln!(stream, "ERR {}", err_msg).ok();
+    if let Some(&sig_tok) = tokens.get(2) {
+        if sig_tok.starts_with("sig:") {
+            let mut sig = String::new();
+            let mut end_idx = 2;
+            for (i, &tok) in tokens.iter().enumerate().skip(2) {
+                let piece = if i == 2 {
+                    tok.trim_start_matches("sig:")
+                } else {
+                    tok
+                };
+                if !sig.is_empty() {
+                    sig.push(' ');
+                }
+                sig.push_str(piece);
+                if sig.contains("->") {
+                    end_idx = i;
+                    break;
+                }
+            }
+            if !sig.contains("->") {
+                stream
+                    .write_all(b"ERR Malformed signature; no '->' found")
+                    .expect("Could not write to stream");
+                return;
+            }
+            metadata = Some(sig);
+            args_start = end_idx + 1;
         }
     }
+
+    let args = &tokens[args_start..];
+
+    match invoke_function(lib, function_name, metadata.as_deref(), args) {
+        Ok(res) => stream
+            .write_all(format!("{res}").as_bytes())
+            .expect("Could not write to stream"),
+        Err(err) => stream
+            .write_all(format!("ERR {}", err).as_bytes())
+            .expect("Could not write to stream"),
+    };
 }
 
 fn handle_client(mut stream: TcpStream, lib: Arc<Library>) {
-    println!("Client connected: {}", stream.peer_addr().unwrap());
     let mut reader = BufReader::new(stream.try_clone().unwrap());
     let mut line = String::new();
-    while let Ok(bytes_read) = reader.read_line(&mut line) {
-        if bytes_read == 0 {
+    while let Ok(n) = reader.read_line(&mut line) {
+        if n == 0 {
             break;
         }
-        if line.trim().starts_with("call") {
-            handle_client_command(&mut stream, &lib, &line);
-        } else {
-            writeln!(stream, "ERR Unknown command").ok();
-        }
+        handle_client_command(&mut stream, &lib, &line);
         line.clear();
     }
-    println!("Client disconnected.");
 }
 
 fn main() {
-    // Usage: dll_server <path_to_dll> [port]
     let args: Vec<String> = args().collect();
     if args.len() < 2 {
         eprintln!("Usage: {} <path_to_dll> [port]", args[0]);
